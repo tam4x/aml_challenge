@@ -1,8 +1,8 @@
 import argparse
 from PIL import Image
 import torch
-from sentence_transformers import SentenceTransformer
-from transformers import AutoImageProcessor, AutoModel
+#from sentence_transformers import SentenceTransformer
+#from transformers import AutoImageProcessor, AutoModel
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -93,7 +93,6 @@ def load_dataset(dataset_path):
     """
     captions_file = dataset_path / "captions.txt"
     images_dir = dataset_path / "Images"
-
     if not captions_file.exists() or not images_dir.is_dir():
         raise FileNotFoundError(f"Could not find 'captions.txt' or 'Images' directory in {dataset_path}")
 
@@ -112,13 +111,14 @@ def create_data_file(dataset_path, output_file, device=None, args={}):
         device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
+    print(f"Loading dataset from: {dataset_path}")
+    df_captions = load_dataset(dataset_path)
+
     text_model = load_text_model()
     image_processor, image_model = load_image_model()
 
     num_augmentations = getattr(args, "num_augmentations", 3)
 
-    print(f"Loading dataset from: {dataset_path}")
-    df_captions = load_dataset(dataset_path)
     all_captions = df_captions['caption'].tolist()
     caption2img = df_captions['image'].tolist()
     all_images = df_captions['image'].unique().tolist()
@@ -135,21 +135,20 @@ def create_data_file(dataset_path, output_file, device=None, args={}):
     
     images_dict = {img_name: i for i, img_name in enumerate(all_images)}
 
-    # Duplicate captions for each augmentation
+    # Duplicate captions per image *and* per augmentation
     repeated_captions = []
     repeated_imgnames = []
-    for img_name, caption in zip(caption2img, all_captions):
+    for img_name, caption in zip(df_captions["image"], df_captions["caption"]):
         for k in range(num_augmentations):
             repeated_captions.append(caption)
             repeated_imgnames.append(f"{img_name}_aug{k+1}")
 
     caption_embeddings = process_captions(text_model, repeated_captions, device)
 
-    # Build label matrix
     num_images = len(all_images)
     num_captions = len(repeated_captions)
-    label = np.zeros((num_captions, num_images), dtype=np.bool)
 
+    label = np.zeros((num_captions, num_images), dtype=bool)
     image_idx_map = {name: i for i, name in enumerate(all_images)}
     for idx, img_name in enumerate(repeated_imgnames):
         if img_name in image_idx_map:
