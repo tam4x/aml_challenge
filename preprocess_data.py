@@ -129,7 +129,7 @@ def create_data_file(dataset_path, output_file, device=None, args={}):
 
     all_images, img_embd = process_images_batch(image_processor, 
                                                 image_model, 
-                                                all_images, 
+                                                all_images[:5], 
                                                 device, 
                                                 dataset_path=dataset_path, augmentations=num_augmentations)
     
@@ -138,10 +138,12 @@ def create_data_file(dataset_path, output_file, device=None, args={}):
     # Duplicate captions per image *and* per augmentation
     repeated_captions = []
     repeated_imgnames = []
-    for img_name, caption in zip(df_captions["image"], df_captions["caption"]):
-        for k in range(num_augmentations):
-            repeated_captions.append(caption)
-            repeated_imgnames.append(f"{img_name}_aug{k+1}")
+    for i in range(len(all_images)):
+        for j in range(5):
+            caption = all_captions[i * 5 + j]
+            for k in range(num_augmentations):
+                repeated_captions.append(caption)
+                repeated_imgnames.append(f"{all_images[i]}_aug{k+1}")
 
     caption_embeddings = process_captions(text_model, repeated_captions, device)
 
