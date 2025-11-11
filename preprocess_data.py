@@ -1,8 +1,8 @@
 import argparse
 from PIL import Image
 import torch
-#from sentence_transformers import SentenceTransformer
-#from transformers import AutoImageProcessor, AutoModel
+from sentence_transformers import SentenceTransformer
+from transformers import AutoImageProcessor, AutoModel
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
