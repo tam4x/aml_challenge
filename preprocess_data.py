@@ -56,22 +56,41 @@ def process_images_batch(image_processor, model, image_paths, device, batch_size
     all_names = []
     img_files = []
     augs = get_augmentations(augmentations)
+    all_images = []
 
-    for i, path in enumerate(tqdm(image_paths, desc="Encoding augmented images")):
-        try:
-            img = Image.open(dataset_path / 'Images' / path).convert("RGB")
-        except Exception as e:
-            print(f"Warning: Skipping image {path} due to error: {e}")
+    for i in tqdm(range(0, len(image_paths), batch_size), desc="Encoding images"):
+        batch_paths = image_paths[i:i+batch_size]
+        valid_images = []
+        
+        # Keep track of which original indices correspond to valid images in the batch
+        valid_paths = []
+
+        for j, path in enumerate(batch_paths):
+            original_index = i + j
+            try:
+                img = Image.open(dataset_path / 'Images' / path).convert("RGB")
+                valid_images.append(img)
+                valid_paths.append(path)
+                for k, aug in enumerate(augs):
+                  aug_img = aug(img)
+                  valid_images.append(aug_img)
+                  valid_paths.append(f"{path}_aug{k+1}")
+            except Exception as e:
+                print(f"Warning: Skipping image {path} due to error: {e}")
+
+        if not valid_images:
             continue
 
-        for k, aug in enumerate(augs):
-            aug_img = aug(img)
-            inputs = image_processor(images=[aug_img], return_tensors="pt").to(device)
-            outputs = model(**inputs)
-            emb = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
-            all_embeddings.append(emb)
-            all_names.append(f"{path}_aug{k+1}")
-
+        inputs = image_processor(images=valid_images, return_tensors="pt").to(device)
+        outputs = model(**inputs)
+        
+        # Average over patch tokens
+        image_features = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+        
+        # Store embeddings based on their success
+        all_embeddings.extend(image_features)
+        img_files.extend(valid_paths)
+    
     all_embeddings = np.vstack(all_embeddings)
 
     return all_names, all_embeddings
@@ -129,7 +148,7 @@ def create_data_file(dataset_path, output_file, device=None, args={}):
 
     all_images, img_embd = process_images_batch(image_processor, 
                                                 image_model, 
-                                                all_images[:5], 
+                                                all_images[:128], 
                                                 device, 
                                                 dataset_path=dataset_path, augmentations=num_augmentations)
     
@@ -138,13 +157,19 @@ def create_data_file(dataset_path, output_file, device=None, args={}):
     # Duplicate captions per image *and* per augmentation
     repeated_captions = []
     repeated_imgnames = []
-    for i in range(len(all_images)):
-        for j in range(5):
-            caption = all_captions[i * 5 + j]
-            for k in range(num_augmentations):
-                repeated_captions.append(caption)
-                repeated_imgnames.append(f"{all_images[i]}_aug{k+1}")
+    num_captions_per_image = 5
+    num_versions_per_image = 4  # original + 3 augmentations
 
+    for i in range(0, len(all_images), num_versions_per_image):
+        image_group = all_images[i : i + num_versions_per_image]
+        for j in range(num_captions_per_image):
+            caption = all_captions[(i // num_versions_per_image) * num_captions_per_image + j]
+            for img_variant in image_group:
+                repeated_captions.append(caption)
+                repeated_imgnames.append(img_variant)
+
+
+    print(len(repeated_captions), len((repeated_imgnames)))
     caption_embeddings = process_captions(text_model, repeated_captions, device)
 
     num_images = len(all_images)

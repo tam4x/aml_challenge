@@ -3,3 +3,6 @@
 /models
 test.zip
 train.zip
+#any file .csv that starts with MLP_submission
+MLP_submission*.csv
+checkpoints
